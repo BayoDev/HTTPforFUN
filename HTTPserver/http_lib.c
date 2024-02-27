@@ -13,6 +13,18 @@ typedef enum{
 void fail_request(char* str,FILE* conn_stream,int socket);
 
 char *adapt_filename(char* file){
+    if(strlen(file)==0){file=malloc(sizeof(char)*2);file="/";}
+
+    // Sanitazation
+    char* aux = file;
+    for(;;){
+        char* occurrence = strpbrk(aux,".");
+        if(occurrence==NULL) break;
+        if(*(occurrence+1)=='.'){ file = occurrence+2; aux=file;}
+        else{aux=occurrence+1;}
+    }
+
+    // TODO add error control to malloc
     char *full_filename = malloc(sizeof(char)*(strlen(ROOT_FOLDER)+strlen(file)+strlen("index.html")+1));
     strcpy(full_filename,ROOT_FOLDER);
     strcat(full_filename,file);
@@ -23,38 +35,59 @@ char *adapt_filename(char* file){
 void send_response(RESPONSE_CODE code,char* filename,FILE* conn_stream, int socket_fd){
 
     char HEADER_CONTENT[500];
+    bool free_filename = true;
     switch(code){
         case OK_200:
             strcpy(HEADER_CONTENT,"HTTP/1.0 200 OK\r\n\r\n");
+            free_filename= false;
             break;
         case FORBIDDEN_403: 
             strcpy(HEADER_CONTENT,"HTTP/1.0 403 Forbidden\r\n\r\n");
+            filename = adapt_filename(FILE_403);
             break;
         case NOT_FOUND_404:
             strcpy(HEADER_CONTENT,"HTTP/1.0 404 Not Found\r\n\r\n");
+            filename = adapt_filename(FILE_404);
             break;
         default:
             strcpy(HEADER_CONTENT,"HTTP/1.0 500 Internal Server error\r\n\r\n");
+            filename = adapt_filename(FILE_500);
             break;
     }
 
     debug("[DEBUG] Sending file: '%s' with header: %s\n",filename,HEADER_CONTENT);
 
-    // Send file
+    // Open file that needs to be sent
     int file_fd = open(filename,O_RDONLY,NULL);
-    if(file_fd==-1){debug("Something went wrong with open while sending response"); return;} // TODO something else in case the file wont open
+    if(file_fd==-1){
+        if(errno==EACCES && code!=FORBIDDEN_403){
+            send_response(FORBIDDEN_403,filename,conn_stream,socket_fd);
+            goto SAFE_SEND_RESPONSE_EXIT;
+        }
+        debug("Something went wrong with open while sending response\n");
+        goto SAFE_SEND_RESPONSE_EXIT;
+    }
 
+    // Get stat of file to get size of file
     struct stat file_stat;
-    if(fstat(file_fd,&file_stat)==-1){debug("Something went wrong in 'stat' call while sending response");close(file_fd);return;}
+    if(fstat(file_fd,&file_stat)==-1){debug("Something went wrong in 'stat' call while sending response\n");close(file_fd);goto SAFE_SEND_RESPONSE_EXIT;}
 
+    // Send first header line
     fputs(HEADER_CONTENT,conn_stream);
     fseek(conn_stream,0L,SEEK_CUR);                         // sync
 
-    // TODO do proper send loop
+    // Transmit file data
     off_t file_size = file_stat.st_size;
-    int sent_data = sendfile(socket_fd,file_fd,NULL,file_size);
-    if(sent_data==-1) perror("Error occured in sendfile\n");
+    off_t offset = 0;
+    while(file_size!=0){
+        int sent_data = sendfile(socket_fd,file_fd,&offset,file_size);
+        if(sent_data==-1){debug("Something went wrong while transmitting file");close(file_fd);goto SAFE_SEND_RESPONSE_EXIT;}
+        file_size-=sent_data;
+    }
     close(file_fd);
+
+    SAFE_SEND_RESPONSE_EXIT:
+    if(free_filename) free(filename);
 }
 
 void fail_request(char* str,FILE* conn_stream,int socket){
@@ -103,18 +136,12 @@ void handle_request(int socket_fd){
         switch(errno){
             case ENOENT:
                 code = NOT_FOUND_404;
-                free(full_filename);
-                full_filename = adapt_filename(FILE_404);
                 break;
             case EACCES:
                 code = FORBIDDEN_403;
-                free(full_filename);
-                full_filename = adapt_filename(FILE_403);
                 break;
             default:
                 code = INTERNAL_ERROR_500;
-                free(full_filename);
-                full_filename = adapt_filename(FILE_500);
         }
     }
 
