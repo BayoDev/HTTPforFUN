@@ -12,8 +12,6 @@
 #include "http_lib.h"
 #include "http_config.h"
 
-#define RCV_BUFF_SIZE 500
-
 void fail_errno(char* data){
     perror(data);
     exit(EXIT_FAILURE);
