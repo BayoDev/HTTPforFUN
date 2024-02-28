@@ -5,6 +5,8 @@
 #define PORT "8080"
 #define MAX_QUEUE 10
 
+#define SERVER_ID   "bayoHTTP"
+
 #define FILE_403    "/page403.html"
 #define FILE_404    "/page404.html"
 #define FILE_500    "/page500.html"

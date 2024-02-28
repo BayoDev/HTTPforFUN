@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
 #include "http_config.h"
 
@@ -19,6 +20,6 @@
 #define debug(...)
 #endif
 
-void handle_request(int socket_fd);
+void* handle_request(void* socket_fd);
 
 #endif

@@ -8,6 +8,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <pthread.h>
+
 // Local imports
 #include "http_lib.h"
 #include "http_config.h"
@@ -60,8 +62,14 @@ void serve_loop(int tcp_socket){
         // Accept socket connection
         int conn_socket = accept(tcp_socket,NULL,NULL);
         if(conn_socket==-1) break;
-        debug("[DEBUG] New connection established\n");
-        handle_request(conn_socket);
+        debug("\n\n[DEBUG] New connection established\n");
+
+        // TODO this shouldnt work since the conn_socket could be changed
+        // pthread_t thread_instance;
+        // if(pthread_create(&thread_instance,NULL,handle_request,&conn_socket)!=0) return;
+        
+        handle_request(&conn_socket);
+
         close(conn_socket);
     }
     fail_errno("Something went wrong in accept");
@@ -71,8 +79,8 @@ int main(){
 
     // Open socket
     int tcp_socket = setup_tcp_connection();
-    printf("[DEBUG] Socket established, now listening...\n");
-    printf("[DEBUG] Page root folder at: %s\n",ROOT_FOLDER);
+    printf("Page root folder at: %s\n",ROOT_FOLDER);
+    printf("Socket established, now accepting connections...\n");
 
     serve_loop(tcp_socket);
 
