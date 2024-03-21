@@ -80,7 +80,7 @@ int main(){
     // Open socket
     int tcp_socket = setup_tcp_connection();
     printf("Page root folder at: %s\n",ROOT_FOLDER);
-    printf("Socket established, now accepting connections...\n");
+    printf("Socket established, now accepting connections at 127.0.0.1:%s ...\n",PORT);
 
     serve_loop(tcp_socket);
 
