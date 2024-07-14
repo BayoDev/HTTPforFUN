@@ -124,7 +124,7 @@ bool parse_request(struct request_data** rt){
         read_val = getline(&line_buffer,&line_size,DATA_STREAM);
         if(read_val==-1){ 
             free(line_buffer);
-            perror("Something went wrong while receiving a request header\n");
+            perror("Something went wrong while receiving a request header");
             return false;
         }
         debug("[DEBUG] Received request: %s",line_buffer);
@@ -170,7 +170,7 @@ void create_response
         bool* file_send
     )
 {
-	if(*rd_data==NULL || rq_data==NULL) return;
+	if(rd_data==NULL || rq_data==NULL) return;
 
     METHOD md = str_to_method(rq_data->METHOD);
     RESPONSE_CODE ret_code = OK_200;
