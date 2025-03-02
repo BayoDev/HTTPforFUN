@@ -51,8 +51,10 @@ struct response_data{
 
 struct path_request_data{
     char* full_path;
+    char* requested_path;
     char* filename;
     char* parameters;
+    // char* local_path;
 };
 
 //######################

@@ -94,6 +94,36 @@ void header_add_field_resp(char* NAME,char* VALUE,struct response_data* st){
     return;
 }
 
+struct path_request_data* init_path_data(char* request_path){
+
+    struct path_request_data* new = malloc(sizeof(struct path_request_data));
+    new->full_path = adapt_filename(request_path);
+
+    new->requested_path = malloc(sizeof(char)*(strlen(request_path)+1));
+    strcpy(new->requested_path,request_path);
+
+
+    new->parameters = strchr(new->requested_path,'?');
+    if( new->parameters == NULL) {
+        new->parameters = malloc(sizeof(char));
+        new->parameters = "";
+    }
+    else{
+        new->parameters++;
+    }
+
+    new->filename = malloc(sizeof(char)*(strlen(new->requested_path)+1));
+    strcpy(new->filename,new->requested_path);
+    new->filename[strlen(new->requested_path)-strlen(new->parameters)-1]='\0';
+
+
+    // new->local_path = malloc(sizeof(char)*(strlen(new->requested_path)+1));
+    // strcpy(new->local_path,new->requested_path); 
+    // new->local_path[strlen(new->requested_path)-strlen(new->filename)-strlen(new->parameters)-1]='\0';
+
+    return new;
+}
+
 void print_request(struct request_data rq){
     printf("%s %s\n",rq.METHOD,rq.VERSION);
     print_path_data(rq.PATH_DATA);
@@ -104,11 +134,12 @@ void print_request(struct request_data rq){
     }
 }
 
-
 void print_path_data(struct path_request_data* pr_data){
     printf("\tFULL PATH: %s\n",pr_data->full_path);
+    printf("\tREQUESTED PATH: %s\n",pr_data->requested_path);
     printf("\tFILENAME: %s\n",pr_data->filename);
     printf("\tPARAMETERS: %s\n",pr_data->parameters);
+    // printf("\tLOCAL PATH: %s\n",pr_data->local_path);
 }
 
 void print_response(struct response_data rd){
@@ -118,24 +149,6 @@ void print_response(struct response_data rd){
         printf("%s: %s\n",aux->NAME,aux->VALUE);
         aux=aux->next_field;
     }
-}
-
-struct path_request_data* init_path_data(char* request_path){
-
-    struct path_request_data* new = malloc(sizeof(struct path_request_data));
-    new->full_path = adapt_filename(request_path);
-
-    new->filename = strrchr(new->full_path,'/');
-    if(new->filename==NULL){
-        new->filename = new->full_path;
-    }
-
-    new->parameters = strchr(new->full_path,'?')+1;
-    if( new->parameters ==NULL) {
-        new->parameters = strchrnul(new->full_path,'?');
-    }
-
-    return new;
 }
 
 char* resp_to_str(struct response_data rd){
@@ -152,6 +165,9 @@ char* header_to_str(struct header_field rd){
 
 void free_path_data(struct path_request_data* pr_data){
     free(pr_data->full_path);
+    free(pr_data->requested_path);
+    free(pr_data->filename);
+    // free(pr_data->local_path);
     free(pr_data);
 }
 
