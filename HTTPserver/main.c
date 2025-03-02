@@ -11,8 +11,8 @@
 #include <pthread.h>
 
 // Local imports
-#include "http_lib.h"
-#include "http_config.h"
+#include "http/http_lib.h"
+#include "http/http_config.h"
 
 void fail_errno(char* data){
     perror(data);

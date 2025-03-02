@@ -1,4 +1,4 @@
-SOURCE := main.c http_lib.c http_data_structures.c
+SOURCE := main.c http/http_lib.c http/http_data_structures.c
 CC_FLAGS := -Wall -fsanitize=address -ggdb -DDEBUG -pthread
 TARGET := server
 
