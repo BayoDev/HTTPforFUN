@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "http_lib.h"
 
 //######################
 //       Structs
@@ -35,7 +36,8 @@ struct header_field{
 
 struct request_data{
     char* METHOD;
-    char* FILE;
+    struct path_request_data* PATH_DATA;
+    char* PARAMETERS;
     char* VERSION;
     struct header_field* other_fields; 
 };
@@ -47,12 +49,18 @@ struct response_data{
     struct header_field* other_fields;
 };
 
+struct path_request_data{
+    char* full_path;
+    char* filename;
+    char* parameters;
+};
+
 //######################
 //      Operations
 //######################
 
 // Request operations
-struct request_data* init_request(char* METHOD,char* FILE,char* VERSION);
+struct request_data* init_request(char* METHOD, struct path_request_data* PATH_DATA,char* VERSION);
 void free_request_data(struct request_data* st);
 void print_request(struct request_data rq);
 
@@ -66,6 +74,11 @@ void print_response(struct response_data rd);
 void header_add_field_req(char* NAME,char* VALUE,struct request_data* st);
 void header_add_field_resp(char* NAME,char* VALUE,struct response_data* st);
 void free_header_field(struct header_field* hd);
+
+// Path request operations
+struct path_request_data* init_path_data(char* request_path);
+void print_path_data(struct path_request_data* pr_data);
+void free_path_data(struct path_request_data* pr_data);
 
 // Helpers
 char* resp_to_str(struct response_data rd);

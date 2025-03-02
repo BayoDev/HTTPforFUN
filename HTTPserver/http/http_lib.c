@@ -152,10 +152,11 @@ bool parse_request(struct request_data** rt){
     char* file = strtok_r(NULL," ",&saveptr);
     char* version = strtok_r(NULL,"\r\n",&saveptr);
 
-    char* full_filename = adapt_filename(file);
-    (*rt) = init_request(method,full_filename,version);
+    struct path_request_data* path_data = init_path_data(file); 
 
-    free(full_filename);
+    // char* full_filename = adapt_filename(file);
+    (*rt) = init_request(method,path_data,version);
+
     free(line_buffer);
 
     for(;;){
@@ -206,7 +207,7 @@ void create_response
             *file_send = false;
         case GET:
             // Change permission based on type of request
-            if(access(rq_data->FILE,R_OK)==-1){
+            if(access(rq_data->PATH_DATA->full_path,R_OK)==-1){
                 switch(errno){
                     case ENOENT:
                         ret_code = NOT_FOUND_404;
@@ -224,7 +225,7 @@ void create_response
 
             {
                 struct stat file_data;
-                if(stat(rq_data->FILE,&file_data)==-1){
+                if(stat(rq_data->PATH_DATA->full_path,&file_data)==-1){
                     perror("Something went wrong with STAT syscall\n");
                     force_500();	
                     return;
@@ -235,6 +236,7 @@ void create_response
                 // Convert conditional time
                 struct tm requested_tm; 
                 memset(&requested_tm, 0, sizeof(struct tm));
+                // Add compatibility with other format supported by the RFC
                 if(strptime(conditional_date,"%a, %d %b %Y %H:%M:%S %Z",&requested_tm)==NULL){
                     ret_code = BAD_REQ_400;
                     break;
@@ -268,18 +270,18 @@ void create_response
             break;
         case BAD_REQ_400:
             *rd_data = init_response("400","Bad Request","HTTP/1.0");
-            free(rq_data->FILE);
-            rq_data->FILE = adapt_filename(FILE_400);
+            free(rq_data->PATH_DATA->full_path);
+            rq_data->PATH_DATA->full_path = adapt_filename(FILE_400);
             break;
 		case FORBIDDEN_403: 
 			*rd_data = init_response("403","Forbidden","HTTP/1.0");
-			free(rq_data->FILE);
-			rq_data->FILE = adapt_filename(FILE_403);
+			free(rq_data->PATH_DATA->full_path);
+			rq_data->PATH_DATA->full_path = adapt_filename(FILE_403);
 			break;
 		case NOT_FOUND_404:
 			*rd_data = init_response("404","Not Found","HTTP/1.0");
-			free(rq_data->FILE);
-			rq_data->FILE = adapt_filename(FILE_404);
+			free(rq_data->PATH_DATA->full_path);
+			rq_data->PATH_DATA->full_path = adapt_filename(FILE_404);
 			break;
         case NOT_IMPLEMENTED_501:
             *rd_data = init_response("501","Not Implemented","HTTP/1.0");
@@ -287,8 +289,8 @@ void create_response
 			break;
 		default:
 			*rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-			free(rq_data->FILE);
-			rq_data->FILE = adapt_filename(FILE_500);
+			free(rq_data->PATH_DATA->full_path);
+			rq_data->PATH_DATA->full_path = adapt_filename(FILE_500);
 			break;
 	}
 
@@ -297,7 +299,7 @@ void create_response
 	header_add_field_resp("Server",SERVER_ID,*rd_data);
 
 	struct stat file_data;
-	if(stat(rq_data->FILE,&file_data)==-1){
+	if(stat(rq_data->PATH_DATA->full_path,&file_data)==-1){
 		perror("Something went wrong with STAT syscall\n");
 		force_500();	
 		return;
@@ -335,7 +337,7 @@ void send_response(struct request_data* rq_data){
     debug("\n\n[DEBUG] Sending response\n");
 	print_response(*rd_data);
 
-    send_data(rq_data->FILE,*rd_data,file_size,send_file);
+    send_data(rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file);
 
     free_response_data(rd_data);
 }

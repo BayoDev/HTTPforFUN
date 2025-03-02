@@ -28,5 +28,6 @@
 #endif
 
 void* handle_request(void* socket_fd);
+char *adapt_filename(char* file);
 
 #endif

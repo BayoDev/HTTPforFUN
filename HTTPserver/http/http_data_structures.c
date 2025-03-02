@@ -4,14 +4,15 @@
 //   DATA STRUCTURES
 //=====================
 
-struct request_data* init_request(char* METHOD,char* FILE,char* VERSION){
-    if(METHOD==NULL || FILE==NULL || VERSION==NULL) return NULL;
+struct request_data* init_request(char* METHOD,struct path_request_data* PATH_DATA,char* VERSION){
+    if(METHOD==NULL || PATH_DATA == NULL || VERSION==NULL) return NULL;
     struct request_data* new = malloc(sizeof(struct request_data));
 
     new->METHOD = malloc(sizeof(char)*(strlen(METHOD)+1));
     strcpy(new->METHOD,METHOD);
-    new->FILE = malloc(sizeof(char)*(strlen(FILE)+1));
-    strcpy(new->FILE,FILE);
+
+    new->PATH_DATA = PATH_DATA;
+
     new->VERSION = malloc(sizeof(char)*(strlen(VERSION)+1));
     strcpy(new->VERSION,VERSION); 
 
@@ -25,8 +26,10 @@ struct response_data* init_response(char* CODE,char* DESC,char* VERSION){
 
     new->CODE = malloc(sizeof(char)*(strlen(CODE)+1));
     strcpy(new->CODE,CODE);
+
     new->DESC = malloc(sizeof(char)*(strlen(DESC)+1));
     strcpy(new->DESC,DESC);
+
     new->VERSION = malloc(sizeof(char)*(strlen(VERSION)+1));
     strcpy(new->VERSION,VERSION); 
 
@@ -92,12 +95,20 @@ void header_add_field_resp(char* NAME,char* VALUE,struct response_data* st){
 }
 
 void print_request(struct request_data rq){
-    printf("%s %s %s\n",rq.METHOD,rq.FILE,rq.VERSION);
+    printf("%s %s\n",rq.METHOD,rq.VERSION);
+    print_path_data(rq.PATH_DATA);
     struct header_field* aux = rq.other_fields;
     while(aux!=NULL){
         printf("%s: %s\n",aux->NAME,aux->VALUE);
         aux=aux->next_field;
     }
+}
+
+
+void print_path_data(struct path_request_data* pr_data){
+    printf("\tFULL PATH: %s\n",pr_data->full_path);
+    printf("\tFILENAME: %s\n",pr_data->filename);
+    printf("\tPARAMETERS: %s\n",pr_data->parameters);
 }
 
 void print_response(struct response_data rd){
@@ -107,6 +118,24 @@ void print_response(struct response_data rd){
         printf("%s: %s\n",aux->NAME,aux->VALUE);
         aux=aux->next_field;
     }
+}
+
+struct path_request_data* init_path_data(char* request_path){
+
+    struct path_request_data* new = malloc(sizeof(struct path_request_data));
+    new->full_path = adapt_filename(request_path);
+
+    new->filename = strrchr(new->full_path,'/');
+    if(new->filename==NULL){
+        new->filename = new->full_path;
+    }
+
+    new->parameters = strchr(new->full_path,'?')+1;
+    if( new->parameters ==NULL) {
+        new->parameters = strchrnul(new->full_path,'?');
+    }
+
+    return new;
 }
 
 char* resp_to_str(struct response_data rd){
@@ -119,6 +148,11 @@ char* header_to_str(struct header_field rd){
 	char* ret = calloc(strlen(rd.NAME)+strlen(rd.VALUE)+5,sizeof(char));
 	sprintf(ret,"%s: %s\r\n",rd.NAME,rd.VALUE);
 	return ret;
+}
+
+void free_path_data(struct path_request_data* pr_data){
+    free(pr_data->full_path);
+    free(pr_data);
 }
 
 // TODO do this without recursion
@@ -137,8 +171,8 @@ void free_request_data(struct request_data* st){
         free(st->other_fields->VALUE);
         free(st->other_fields);
     }
-    free(st->FILE);
     free(st->METHOD);
+    free_path_data(st->PATH_DATA);
     free(st->VERSION);
     free(st);
 }
