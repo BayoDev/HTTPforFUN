@@ -11,8 +11,9 @@
 #include <pthread.h>
 
 // Local imports
-#include "http/http_lib.h"
 #include "http/http_config.h"
+#include "http/http_lib.h"
+#include "http/http_data_structures.h"
 
 void fail_errno(char* data){
     perror(data);
@@ -34,7 +35,7 @@ int setup_tcp_connection(){
     hints.ai_next = NULL;
 
     // Get address information
-    ret_code = getaddrinfo(NULL,PORT,&hints,&result);
+    ret_code = getaddrinfo(NULL,PORT_PARAM,&hints,&result);
     if(ret_code!=0) fail_errno("An error occurred in getaddrinfo");
 
     // Create TCP socket
@@ -56,6 +57,15 @@ int setup_tcp_connection(){
 }
 
 void serve_loop(int tcp_socket){
+
+    // Create server info struct
+    struct server_config_data* server_info = init_server_config(
+        ROOT_FOLDER_PARAM,
+        PORT_PARAM,
+        HTTP_VERSION_PARAM,
+        SERVER_ID_PARAM
+    );
+
     // Start accepting connections
     // TODO: check if NULL is right as third parameter
     for(;;){
@@ -68,7 +78,7 @@ void serve_loop(int tcp_socket){
         // pthread_t thread_instance;
         // if(pthread_create(&thread_instance,NULL,handle_request,&conn_socket)!=0) return;
         
-        handle_request(&conn_socket);
+        handle_request(&conn_socket, server_info);
 
         close(conn_socket);
     }
@@ -79,8 +89,8 @@ int main(){
 
     // Open socket
     int tcp_socket = setup_tcp_connection();
-    printf("Page root folder at: %s\n",ROOT_FOLDER);
-    printf("Socket established, now accepting connections at 127.0.0.1:%s ...\n",PORT);
+    printf("Page root folder at: %s\n",ROOT_FOLDER_PARAM);
+    printf("Socket established, now accepting connections at 127.0.0.1:%s ...\n",PORT_PARAM);
 
     serve_loop(tcp_socket);
 

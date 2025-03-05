@@ -4,6 +4,40 @@
 //   DATA STRUCTURES
 //=====================
 
+struct server_config_data* init_server_config(
+    char* ROOT_FOLDER,
+    char* PORT,
+    char* HTTP_VERSION,
+    char* SERVER_ID
+){
+    // Check for missing parameters
+    if(ROOT_FOLDER==NULL || PORT==NULL || HTTP_VERSION==NULL || SERVER_ID==NULL) return NULL;
+
+    struct server_config_data* new = malloc(sizeof(struct server_config_data));
+
+    new->ROOT_FOLDER = malloc(sizeof(char)*(strlen(ROOT_FOLDER)+1));
+    strcpy(new->ROOT_FOLDER,ROOT_FOLDER);
+
+    // Calculate real path of root folder
+    char* cwd = getcwd(NULL,0);
+    new->ROOT_FOLDER_REAL_PATH = malloc(sizeof(char)*(strlen(cwd)+strlen(ROOT_FOLDER)+2));
+    strcpy(new->ROOT_FOLDER_REAL_PATH,cwd);
+    strcat(new->ROOT_FOLDER_REAL_PATH,"/");
+    strcat(new->ROOT_FOLDER_REAL_PATH,ROOT_FOLDER);
+    free(cwd);
+
+    new->PORT = malloc(sizeof(char)*(strlen(PORT)+1));
+    strcpy(new->PORT,PORT);
+
+    new->HTTP_VERSION = malloc(sizeof(char)*(strlen(HTTP_VERSION)+1));
+    strcpy(new->HTTP_VERSION,HTTP_VERSION);
+
+    new->SERVER_ID = malloc(sizeof(char)*(strlen(SERVER_ID)+1));
+    strcpy(new->SERVER_ID,SERVER_ID);
+
+    return new;
+}
+
 struct request_data* init_request(char* METHOD,struct path_request_data* PATH_DATA,char* VERSION){
     if(METHOD==NULL || PATH_DATA == NULL || VERSION==NULL) return NULL;
     struct request_data* new = malloc(sizeof(struct request_data));
@@ -94,14 +128,13 @@ void header_add_field_resp(char* NAME,char* VALUE,struct response_data* st){
     return;
 }
 
-struct path_request_data* init_path_data(char* request_path){
+struct path_request_data* init_path_data(char* request_path,struct server_config_data* server_info){
 
     struct path_request_data* new = malloc(sizeof(struct path_request_data));
-    new->full_path = adapt_filename(request_path);
+    new->full_path = adapt_filename(request_path,server_info);
 
     new->requested_path = malloc(sizeof(char)*(strlen(request_path)+1));
     strcpy(new->requested_path,request_path);
-
 
     new->parameters = strchr(new->requested_path,'?');
     if( new->parameters == NULL) {
@@ -114,8 +147,16 @@ struct path_request_data* init_path_data(char* request_path){
 
     new->filename = malloc(sizeof(char)*(strlen(new->requested_path)+1));
     strcpy(new->filename,new->requested_path);
-    new->filename[strlen(new->requested_path)-strlen(new->parameters)-1]='\0';
+    int idx = strlen(new->requested_path)-strlen(new->parameters);
+    if(strcmp(new->parameters,"")!=0) idx--;
+    new->filename[idx]='\0';
 
+    new->real_full_path = malloc(sizeof(char)*(strlen(server_info->ROOT_FOLDER_REAL_PATH)+strlen(new->filename)+1));
+    strcpy(new->real_full_path,server_info->ROOT_FOLDER_REAL_PATH);
+    strcat(new->real_full_path,new->filename);
+
+    new->file_extension = strrchr(new->filename,'.');
+    if(new->file_extension!=NULL) new->file_extension++;
 
     // new->local_path = malloc(sizeof(char)*(strlen(new->requested_path)+1));
     // strcpy(new->local_path,new->requested_path); 
@@ -136,9 +177,11 @@ void print_request(struct request_data rq){
 
 void print_path_data(struct path_request_data* pr_data){
     printf("\tFULL PATH: %s\n",pr_data->full_path);
+    printf("\tREAL FULL PATH: %s\n",pr_data->real_full_path);
     printf("\tREQUESTED PATH: %s\n",pr_data->requested_path);
     printf("\tFILENAME: %s\n",pr_data->filename);
     printf("\tPARAMETERS: %s\n",pr_data->parameters);
+    printf("\tFILE EXTENSION: %s\n",pr_data->file_extension);
     // printf("\tLOCAL PATH: %s\n",pr_data->local_path);
 }
 
@@ -167,7 +210,7 @@ void free_path_data(struct path_request_data* pr_data){
     free(pr_data->full_path);
     free(pr_data->requested_path);
     free(pr_data->filename);
-    // free(pr_data->local_path);
+    free(pr_data->real_full_path);
     free(pr_data);
 }
 

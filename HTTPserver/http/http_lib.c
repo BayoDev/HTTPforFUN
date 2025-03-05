@@ -1,7 +1,6 @@
 #include "http_lib.h"
 #include "http_data_structures.h"
 
-#include <sys/types.h>
 
 
 __thread FILE* DATA_STREAM;
@@ -12,7 +11,7 @@ __thread int DATA_SOCKET;
 //=====================
 
 // Basic sanity check and uniforming for file names
-char *adapt_filename(char* file){
+char *adapt_filename(char* file,struct server_config_data* server_info){
     if(strlen(file)==0){file=malloc(sizeof(char)*2);file="/";}
 
     // Sanitazation
@@ -25,8 +24,8 @@ char *adapt_filename(char* file){
     }
 
     // TODO add error control to malloc
-    char *full_filename = malloc(sizeof(char)*(strlen(ROOT_FOLDER)+strlen(file)+strlen("index.html")+1));
-    strcpy(full_filename,ROOT_FOLDER);
+    char *full_filename = malloc(sizeof(char)*(strlen(server_info->ROOT_FOLDER)+strlen(file)+strlen("index.html")+1));
+    strcpy(full_filename,server_info->ROOT_FOLDER);
     strcat(full_filename,file);
     if(file[strlen(file)-1]=='/') strcat(full_filename,"index.html");
     return full_filename;
@@ -63,10 +62,12 @@ void force_500();
 
 void send_data
     (
+        struct request_data* rq_data,
         char* filename,
         struct response_data rd_data,
         off_t file_size,
-        bool file_send
+        bool file_send,
+        struct server_config_data* server_info
     )
 {
     if(filename==NULL){ force_500(); return; }
@@ -96,8 +97,36 @@ void send_data
 		aux = aux->next_field;
 	}
 
-	fputs("\r\n",DATA_STREAM);
-    fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync
+    // Check if CGI
+    if( 
+        rq_data!=NULL 
+        && rq_data->PATH_DATA->file_extension!=NULL 
+        && strcmp(rq_data->PATH_DATA->file_extension,"php")==0 
+        && file_send
+    ){
+        debug("\n[DEBUG] RECOGNIZED")
+        // fputs("\r\n",DATA_STREAM);
+        fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync 
+
+        // Prepare CGI environment
+        prepare_cgi_env(rq_data,server_info);
+
+        spawn_cgi_process(
+            filename,
+            file_fd,
+            DATA_SOCKET
+        );
+
+        fputs("\r\n",DATA_STREAM);
+        fseek(DATA_STREAM,0L,SEEK_CUR); 
+
+        close(file_fd);
+        return;
+
+    }else{
+        fputs("\r\n",DATA_STREAM);
+        fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync
+    }
 
     if(!file_send) return;
 
@@ -120,14 +149,14 @@ void send_data
 void force_500(){
     struct response_data* rd_data;
     rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-    send_data(NULL,*rd_data,0,false);
+    send_data(NULL,NULL,*rd_data,0,false, NULL);
     free_response_data(rd_data);
     fclose(DATA_STREAM);
     exit(-1);
 }   
 
 // This function return parse the request, returns a response code and the request data into rt
-bool parse_request(struct request_data** rt){
+bool parse_request(struct request_data** rt,struct server_config_data* server_info){
     if(DATA_STREAM==NULL) return false;
     *rt = NULL;
     char* line_buffer;
@@ -152,7 +181,9 @@ bool parse_request(struct request_data** rt){
     char* file = strtok_r(NULL," ",&saveptr);
     char* version = strtok_r(NULL,"\r\n",&saveptr);
 
-    struct path_request_data* path_data = init_path_data(file); 
+    debug("\n[DEBUG] FILE_NAME: %s",file);
+
+    struct path_request_data* path_data = init_path_data(file,server_info); 
 
     // char* full_filename = adapt_filename(file);
     (*rt) = init_request(method,path_data,version);
@@ -183,7 +214,8 @@ void create_response
         struct response_data** rd_data,
         struct request_data* rq_data,
         off_t* file_size,
-        bool* file_send
+        bool* file_send,
+        struct server_config_data* server_info
     )
 {
 	if(rd_data==NULL || rq_data==NULL) return;
@@ -271,17 +303,17 @@ void create_response
         case BAD_REQ_400:
             *rd_data = init_response("400","Bad Request","HTTP/1.0");
             free(rq_data->PATH_DATA->full_path);
-            rq_data->PATH_DATA->full_path = adapt_filename(FILE_400);
+            rq_data->PATH_DATA->full_path = adapt_filename(FILE_400,server_info);
             break;
 		case FORBIDDEN_403: 
 			*rd_data = init_response("403","Forbidden","HTTP/1.0");
 			free(rq_data->PATH_DATA->full_path);
-			rq_data->PATH_DATA->full_path = adapt_filename(FILE_403);
+			rq_data->PATH_DATA->full_path = adapt_filename(FILE_403,server_info);
 			break;
 		case NOT_FOUND_404:
 			*rd_data = init_response("404","Not Found","HTTP/1.0");
 			free(rq_data->PATH_DATA->full_path);
-			rq_data->PATH_DATA->full_path = adapt_filename(FILE_404);
+			rq_data->PATH_DATA->full_path = adapt_filename(FILE_404,server_info);
 			break;
         case NOT_IMPLEMENTED_501:
             *rd_data = init_response("501","Not Implemented","HTTP/1.0");
@@ -290,13 +322,13 @@ void create_response
 		default:
 			*rd_data = init_response("500","Internal Server Error","HTTP/1.0");
 			free(rq_data->PATH_DATA->full_path);
-			rq_data->PATH_DATA->full_path = adapt_filename(FILE_500);
+			rq_data->PATH_DATA->full_path = adapt_filename(FILE_500,server_info);
 			break;
 	}
 
     header_add_field_resp("Connection","close",*rd_data);
 
-	header_add_field_resp("Server",SERVER_ID,*rd_data);
+	header_add_field_resp("Server",server_info->SERVER_ID,*rd_data);
 
 	struct stat file_data;
 	if(stat(rq_data->PATH_DATA->full_path,&file_data)==-1){
@@ -312,7 +344,7 @@ void create_response
 
 	char aux[BUFF_SIZE];
 	sprintf(aux,"%ld",(long int) file_data.st_size);
-	header_add_field_resp("Content-Length",aux,*rd_data);
+	// header_add_field_resp("Content-Length",aux,*rd_data);
 
 	// Get current date
 	time_t* temp = malloc(sizeof(time_t));
@@ -328,16 +360,16 @@ void create_response
     
 }
 
-void send_response(struct request_data* rq_data){
+void send_response(struct request_data* rq_data,struct server_config_data* server_info){
 
 	struct response_data* rd_data;
     off_t file_size;
     bool send_file;
-	create_response(&rd_data,rq_data,&file_size,&send_file);
+	create_response(&rd_data,rq_data,&file_size,&send_file,server_info);
     debug("\n\n[DEBUG] Sending response\n");
 	print_response(*rd_data);
 
-    send_data(rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file);
+    send_data(rq_data,rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file,server_info);
 
     free_response_data(rd_data);
 }
@@ -347,13 +379,13 @@ void send_response(struct request_data* rq_data){
 //=====================
 
 
-void* handle_request(void* socket){
+void* handle_request(void* socket,struct server_config_data* server_info){
     DATA_SOCKET = *((int*) socket);
     DATA_STREAM = fdopen(DATA_SOCKET,"r+");
     if(DATA_STREAM==NULL) return NULL;
     
     struct request_data* data;
-    bool success = parse_request(&data);
+    bool success = parse_request(&data,server_info);
 
     #ifdef DEBUG
     print_request(*data);
@@ -364,7 +396,7 @@ void* handle_request(void* socket){
         return NULL;
     }
 
-    send_response(data);
+    send_response(data,server_info);
     free_request_data(data);
 
     fclose(DATA_STREAM);

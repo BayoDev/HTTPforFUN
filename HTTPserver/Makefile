@@ -1,4 +1,4 @@
-SOURCE := main.c http/http_lib.c http/http_data_structures.c
+SOURCE := main.c http/http_lib.c http/http_data_structures.c cgi/cgi_interface.c
 CC_FLAGS := -Wall -fsanitize=address -ggdb -DDEBUG -pthread
 TARGET := out/server
 

@@ -1,13 +1,13 @@
 #ifndef HTTP_CONFIG
 #define HTTP_CONFIG
 
-#define ROOT_FOLDER "./www-root"
-#define PORT "8080"
+#define ROOT_FOLDER_PARAM "./www-root"
+#define PORT_PARAM "8080"
 #define MAX_QUEUE 10
 
-#define HTTP_VERSION "HTTP/1.0"
+#define HTTP_VERSION_PARAM "HTTP/1.0"
 
-#define SERVER_ID   "bayoHTTP"
+#define SERVER_ID_PARAM   "bayoHTTP"
 
 #define FILE_400    "/page400.html"
 #define FILE_403    "/page403.html"

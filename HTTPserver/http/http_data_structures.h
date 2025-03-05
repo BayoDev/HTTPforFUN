@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "http_lib.h"
-
 //######################
 //       Structs
 //######################
@@ -51,15 +50,27 @@ struct response_data{
 
 struct path_request_data{
     char* full_path;
+    char* real_full_path;
     char* requested_path;
     char* filename;
     char* parameters;
-    // char* local_path;
+    char* file_extension;
+};
+
+struct server_config_data{
+    char* ROOT_FOLDER;
+    char* ROOT_FOLDER_REAL_PATH;
+    char* PORT;
+    char* HTTP_VERSION;
+    char* SERVER_ID;
 };
 
 //######################
 //      Operations
 //######################
+
+// Server config ops
+struct server_config_data* init_server_config(char* ROOT_FOLDER,char* PORT,char* HTTP_VERSION,char* SERVER_ID);
 
 // Request operations
 struct request_data* init_request(char* METHOD, struct path_request_data* PATH_DATA,char* VERSION);
@@ -78,7 +89,7 @@ void header_add_field_resp(char* NAME,char* VALUE,struct response_data* st);
 void free_header_field(struct header_field* hd);
 
 // Path request operations
-struct path_request_data* init_path_data(char* request_path);
+struct path_request_data* init_path_data(char* request_path,struct server_config_data* server_info);
 void print_path_data(struct path_request_data* pr_data);
 void free_path_data(struct path_request_data* pr_data);
 
