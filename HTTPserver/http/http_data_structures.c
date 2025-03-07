@@ -155,7 +155,7 @@ struct path_request_data* init_path_data(char* request_path,struct server_config
     strcpy(new->real_full_path,server_info->ROOT_FOLDER_REAL_PATH);
     strcat(new->real_full_path,new->filename);
 
-    new->file_extension = strrchr(new->filename,'.');
+    new->file_extension = strrchr(new->full_path,'.');
     if(new->file_extension!=NULL) new->file_extension++;
 
     // new->local_path = malloc(sizeof(char)*(strlen(new->requested_path)+1));

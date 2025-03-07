@@ -1,4 +1,5 @@
 #include "http_lib.h"
+#include <errno.h>
 
 __thread FILE* DATA_STREAM;
 __thread int DATA_SOCKET; 
@@ -6,6 +7,24 @@ __thread int DATA_SOCKET;
 //=====================
 //      AUXILIARY
 //=====================
+
+// This function changes the PATH to the requested file, to one that handles the error code
+void handle_error_code(
+    struct request_data* rq_data,
+    RESPONSE_CODE code,
+    struct server_config_data* server_info
+){
+    if(code==OK_200) return;
+
+    // Add customization for error files
+    free_path_data(rq_data->PATH_DATA);
+
+    rq_data->PATH_DATA = init_path_data("/error.html",server_info); 
+    
+    log_debug("New path for file:");
+    log_path_data(rq_data->PATH_DATA);
+
+}
 
 // Basic sanity check and uniforming for file names
 char *adapt_filename(char* file,struct server_config_data* server_info){
@@ -24,7 +43,7 @@ char *adapt_filename(char* file,struct server_config_data* server_info){
     char *full_filename = malloc(sizeof(char)*(strlen(server_info->ROOT_FOLDER)+strlen(file)+strlen("index.html")+1));
     strcpy(full_filename,server_info->ROOT_FOLDER);
     strcat(full_filename,file);
-    if(file[strlen(file)-1]=='/') strcat(full_filename,"index.html");
+    // if(file[strlen(file)-1]=='/') strcat(full_filename,"index.html");
     return full_filename;
 }
 
@@ -101,6 +120,7 @@ void send_data
         && strcmp(rq_data->PATH_DATA->file_extension,"php")==0 
         && file_send
     ){
+        log_debug("Recognized as CGI script");
         fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync 
 
         // Prepare CGI environment
@@ -151,9 +171,13 @@ void force_500(){
     exit(-1);
 }   
 
-// This function return parse the request, returns a response code and the request data into rt
-bool parse_request(struct request_data** rt,struct server_config_data* server_info){
+// This function parses the incoming request, returns a response code and the request data into rt
+bool parse_request(
+    struct request_data** rt,
+    struct server_config_data* server_info
+){
     if(DATA_STREAM==NULL) return false;
+
     *rt = NULL;
     char* line_buffer;
     ssize_t read_val;
@@ -177,7 +201,10 @@ bool parse_request(struct request_data** rt,struct server_config_data* server_in
     char* file = strtok_r(NULL," ",&saveptr);
     char* version = strtok_r(NULL,"\r\n",&saveptr);
 
-    log_debug("FILE_NAME: %s",file);
+    // Check for empty index request
+    if(strcmp(file,"/")==0){
+        file = "/index.html";
+    }
 
     struct path_request_data* path_data = init_path_data(file,server_info); 
 
@@ -250,6 +277,7 @@ void create_response
             if(conditional_date == NULL || md == HEAD) break;
 
             {
+
                 struct stat file_data;
                 if(stat(rq_data->PATH_DATA->real_full_path,&file_data)==-1){
                     perror("Something went wrong with STAT syscall\n");
@@ -287,36 +315,30 @@ void create_response
 
 	switch(ret_code){
 		case OK_200:
-			*rd_data = init_response("200","OK","HTTP/1.0");
+			*rd_data = init_response("200","OK",server_info->HTTP_VERSION);
 			break;
         case NOT_MOD_304:
-            *rd_data = init_response("304","Not Modified","HTTP/1.0");
+            *rd_data = init_response("304","Not Modified",server_info->HTTP_VERSION);
             break;
         case BAD_REQ_400:
-            *rd_data = init_response("400","Bad Request","HTTP/1.0");
-            free(rq_data->PATH_DATA->full_path);
-            rq_data->PATH_DATA->full_path = adapt_filename(FILE_400,server_info);
+            *rd_data = init_response("400","Bad Request",server_info->HTTP_VERSION);
             break;
 		case FORBIDDEN_403: 
-			*rd_data = init_response("403","Forbidden","HTTP/1.0");
-			free(rq_data->PATH_DATA->full_path);
-			rq_data->PATH_DATA->full_path = adapt_filename(FILE_403,server_info);
+			*rd_data = init_response("403","Forbidden",server_info->HTTP_VERSION);
 			break;
 		case NOT_FOUND_404:
-			*rd_data = init_response("404","Not Found","HTTP/1.0");
-			free(rq_data->PATH_DATA->full_path);
-			rq_data->PATH_DATA->full_path = adapt_filename(FILE_404,server_info);
+			*rd_data = init_response("404","Not Found",server_info->HTTP_VERSION);
 			break;
         case NOT_IMPLEMENTED_501:
-            *rd_data = init_response("501","Not Implemented","HTTP/1.0");
+            *rd_data = init_response("501","Not Implemented",server_info->HTTP_VERSION);
 			*file_send = false;
 			break;
 		default:
-			*rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-			free(rq_data->PATH_DATA->full_path);
-			rq_data->PATH_DATA->full_path = adapt_filename(FILE_500,server_info);
+			*rd_data = init_response("500","Internal Server Error",server_info->HTTP_VERSION);
 			break;
 	}
+
+    handle_error_code(rq_data,ret_code,server_info);
 
     header_add_field_resp("Connection","close",*rd_data);
 
@@ -329,13 +351,14 @@ void create_response
 		return;
 	}
 
-    (*file_size) = file_data.st_size;
+    if(file_send) (*file_size) = file_data.st_size;
 
 	// TODO can you do this better?
+    
 	#define BUFF_SIZE 500
-
 	char aux[BUFF_SIZE];
-	sprintf(aux,"%ld",(long int) file_data.st_size);
+
+	// sprintf(aux,"%ld",(long int) file_data.st_size);
 	// header_add_field_resp("Content-Length",aux,*rd_data);
 
 	// Get current date
@@ -369,7 +392,6 @@ void send_response(struct request_data* rq_data,struct server_config_data* serve
 //=====================
 //      INTERFACE
 //=====================
-
 
 void* handle_request(void* socket,struct server_config_data* server_info){
     DATA_SOCKET = *((int*) socket);
