@@ -285,6 +285,7 @@ void create_response
     switch(md){
         case HEAD:
             *file_send = false;
+        case POST:
         case GET:
             // Change permission based on type of request
             if(access(rq_data->PATH_DATA->full_path,R_OK)==-1){
@@ -301,7 +302,7 @@ void create_response
             }
 
             // Check for conditional 
-            if(conditional_date == NULL || md == HEAD) break;
+            if(conditional_date == NULL || md != GET) break;
 
             {
 
@@ -334,7 +335,6 @@ void create_response
             }
 
             break;
-        case POST:
         case NONE:
             ret_code = NOT_IMPLEMENTED_501;
             *file_send = false;
