@@ -2,6 +2,7 @@
 #define HTTP_CONFIG
 
 #define ROOT_FOLDER_PARAM "./www-root"
+// #define ROOT_FOLDER_PARAM "./real_scenario/ProgettoSAW"
 #define PORT_PARAM "8080"
 #define MAX_QUEUE 10
 

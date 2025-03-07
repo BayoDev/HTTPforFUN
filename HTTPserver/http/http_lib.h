@@ -21,14 +21,9 @@
 #include <time.h>
 
 #include "http_config.h"
-#include "../cgi/cgi_interface.h"
 #include "http_data_structures.h"
-
-#ifdef DEBUG
-#define debug(...) printf(__VA_ARGS__);
-#else
-#define debug(...)
-#endif
+#include "../cgi/cgi_interface.h"
+#include "../c_log/c_log.h"
 
 void* handle_request(void* socket_fd,struct server_config_data* server_info);
 char *adapt_filename(char* file,struct server_config_data* server_info);

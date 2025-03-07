@@ -2,3 +2,5 @@
 ./HTTPserver/server
 ./HTTPserver/out
 ./HTTPserver/real_scenario
+log*
+*/out/*

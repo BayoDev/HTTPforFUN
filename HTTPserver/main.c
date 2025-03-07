@@ -7,10 +7,12 @@
 #include <string.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 #include <pthread.h>
 
 // Local imports
+#include "c_log/c_log.h"
 #include "http/http_config.h"
 #include "http/http_lib.h"
 #include "http/http_data_structures.h"
@@ -18,6 +20,14 @@
 void fail_errno(char* data){
     perror(data);
     exit(EXIT_FAILURE);
+}
+
+int init_log(){
+    int fd = open("log.txt",O_WRONLY|O_CREAT|O_TRUNC,0777);
+    if(fd==-1) return -1;
+
+    init_logging(fd,true,LOG_DEBUG);
+    return 0;
 }
 
 int setup_tcp_connection(){
@@ -72,7 +82,7 @@ void serve_loop(int tcp_socket){
         // Accept socket connection
         int conn_socket = accept(tcp_socket,NULL,NULL);
         if(conn_socket==-1) break;
-        debug("\n\n[DEBUG] New connection established\n");
+        log_debug("New connection established");
 
         // TODO this shouldnt work since the conn_socket could be changed
         // pthread_t thread_instance;
@@ -87,10 +97,13 @@ void serve_loop(int tcp_socket){
 
 int main(){
 
+    // Init logging
+    init_log();
+
     // Open socket
     int tcp_socket = setup_tcp_connection();
-    printf("Page root folder at: %s\n",ROOT_FOLDER_PARAM);
-    printf("Socket established, now accepting connections at 127.0.0.1:%s ...\n",PORT_PARAM);
+    log_info("Page root folder at: %s",ROOT_FOLDER_PARAM);
+    log_info("Socket established, now accepting connections at 127.0.0.1:%s ...",PORT_PARAM);
 
     serve_loop(tcp_socket);
 

@@ -1,7 +1,4 @@
 #include "http_lib.h"
-#include "http_data_structures.h"
-
-
 
 __thread FILE* DATA_STREAM;
 __thread int DATA_SOCKET; 
@@ -77,7 +74,7 @@ void send_data
         // Open file that needs to be sent
         file_fd = open(filename,O_RDONLY,NULL);
         if(file_fd==-1){
-            debug("Something went wrong with open while sending response\n");
+            log_debug("Something went wrong with open while sending response");
             force_500();
             return;
         }
@@ -104,7 +101,7 @@ void send_data
         && strcmp(rq_data->PATH_DATA->file_extension,"php")==0 
         && file_send
     ){
-        debug("\n[DEBUG] RECOGNIZED")
+        log_debug("RECOGNIZED");
         // fputs("\r\n",DATA_STREAM);
         fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync 
 
@@ -149,8 +146,8 @@ void send_data
 void force_500(){
     struct response_data* rd_data;
     rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-    send_data(NULL,NULL,*rd_data,0,false, NULL);
-    free_response_data(rd_data);
+    // send_data(NULL,NULL,*rd_data,0,false, NULL);
+    // free_response_data(rd_data);
     fclose(DATA_STREAM);
     exit(-1);
 }   
@@ -171,7 +168,7 @@ bool parse_request(struct request_data** rt,struct server_config_data* server_in
             perror("Something went wrong while receiving a request header");
             return false;
         }
-        debug("[DEBUG] Received request: %s",line_buffer);
+        log_debug("Received request: %s",line_buffer);
         line_size=0;
     }
 
@@ -181,7 +178,7 @@ bool parse_request(struct request_data** rt,struct server_config_data* server_in
     char* file = strtok_r(NULL," ",&saveptr);
     char* version = strtok_r(NULL,"\r\n",&saveptr);
 
-    debug("\n[DEBUG] FILE_NAME: %s",file);
+    log_debug("FILE_NAME: %s",file);
 
     struct path_request_data* path_data = init_path_data(file,server_info); 
 
@@ -227,12 +224,10 @@ void create_response
     // Parse conditional date if present
     char* conditional_date = is_conditional_request(rq_data);
 
-    #ifdef DEBUG
     if(conditional_date==NULL)
-        printf("\n\n[DEBUG] Request is not conditional");
+        log_debug("Request is not conditional");
     else
-        printf("\n\n[DEBUG] Request is conditional, with date: %s",conditional_date);
-    #endif
+        log_debug("Request is conditional, with date: %s",conditional_date);
 
     switch(md){
         case HEAD:
@@ -257,7 +252,7 @@ void create_response
 
             {
                 struct stat file_data;
-                if(stat(rq_data->PATH_DATA->full_path,&file_data)==-1){
+                if(stat(rq_data->PATH_DATA->real_full_path,&file_data)==-1){
                     perror("Something went wrong with STAT syscall\n");
                     force_500();	
                     return;
@@ -331,7 +326,7 @@ void create_response
 	header_add_field_resp("Server",server_info->SERVER_ID,*rd_data);
 
 	struct stat file_data;
-	if(stat(rq_data->PATH_DATA->full_path,&file_data)==-1){
+	if(stat(rq_data->PATH_DATA->real_full_path,&file_data)==-1){
 		perror("Something went wrong with STAT syscall\n");
 		force_500();	
 		return;
@@ -366,7 +361,7 @@ void send_response(struct request_data* rq_data,struct server_config_data* serve
     off_t file_size;
     bool send_file;
 	create_response(&rd_data,rq_data,&file_size,&send_file,server_info);
-    debug("\n\n[DEBUG] Sending response\n");
+    log_debug("Sending response");
 	print_response(*rd_data);
 
     send_data(rq_data,rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file,server_info);
