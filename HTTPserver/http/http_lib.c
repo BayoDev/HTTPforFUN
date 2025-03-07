@@ -21,9 +21,8 @@ void handle_error_code(
 
     rq_data->PATH_DATA = init_path_data("/error.html",server_info); 
     
-    log_debug("New path for file:");
-    log_path_data(rq_data->PATH_DATA);
-
+    // log_debug("New path for file:");
+    // log_path_data(rq_data->PATH_DATA);
 }
 
 // Basic sanity check and uniforming for file names
@@ -401,9 +400,7 @@ void* handle_request(void* socket,struct server_config_data* server_info){
     struct request_data* data;
     bool success = parse_request(&data,server_info);
 
-    #ifdef DEBUG
     log_request(*data);
-    #endif
 
     if(!success){
         force_500();
