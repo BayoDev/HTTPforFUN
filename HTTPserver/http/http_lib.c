@@ -69,35 +69,33 @@ char* is_conditional_request(
     return NULL;
 }
 
+void flush_data_stream(){
+    fseek(DATA_STREAM,0L,SEEK_CUR); 
+}
+
 void force_500();
 
-//=====================
-//     HANDLE I/O
-//=====================
+//===========================
+//
+//   RESPONSE TRANSMISSION
+//
+//===========================
 
-void send_data
-    (
-        struct request_data* rq_data,
-        char* filename,
-        struct response_data rd_data,
-        off_t file_size,
-        bool file_send,
-        struct server_config_data* server_info
-    )
-{
-    if(filename==NULL && file_send){ force_500(); return; }
-
-    int file_fd;
-    if(file_send){
-        // Open file that needs to be sent
-        file_fd = open(filename,O_RDONLY,NULL);
-        if(file_fd==-1){
-            log_debug("Something went wrong with open while sending response");
-            force_500();
-            return;
-        }
+// Opens the file that needs to be sent and returns file descriptor
+int open_response_file(char* filename){
+    int file_fd = open(filename,O_RDONLY,NULL);
+    if(file_fd==-1){
+        log_debug("Something went wrong with open while sending response");
+        force_500();
+        return -1;      // unreachable
     }
+    return file_fd;
+}
 
+// Sends the header of the response
+void send_response_header(
+    struct response_data rd_data
+){
     // Send first header line
 	char* first_line = resp_to_str(rd_data);
     fputs(first_line,DATA_STREAM);
@@ -111,39 +109,10 @@ void send_data
 		free(buffer);
 		aux = aux->next_field;
 	}
+}
 
-    // Check if CGI
-    if( 
-        rq_data!=NULL 
-        && rq_data->PATH_DATA->file_extension!=NULL 
-        && strcmp(rq_data->PATH_DATA->file_extension,"php")==0 
-        && file_send
-    ){
-        log_debug("Recognized as CGI script");
-        fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync 
-
-        // Prepare CGI environment
-        prepare_cgi_env(rq_data,server_info);
-
-        spawn_cgi_process(
-            filename,
-            file_fd,
-            DATA_SOCKET
-        );
-
-        fputs("\r\n",DATA_STREAM);
-        fseek(DATA_STREAM,0L,SEEK_CUR); 
-
-        close(file_fd);
-        return;
-
-    }else{
-        fputs("\r\n",DATA_STREAM);
-        fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync
-    }
-
-    if(!file_send) return;
-
+// Sends the response body, getting data from the file descriptor file_fd, of size file_size
+void send_response_body(int file_fd,off_t file_size){
     // Transmit file data
     off_t offset = 0;
     while(file_size!=0){
@@ -155,7 +124,53 @@ void send_data
         }
         file_size-=sent_data;
     }
-    close(file_fd);
+}
+
+// Send response to a request
+void send_response_data
+    (
+        struct request_data* rq_data,
+        char* filename,
+        struct response_data rd_data,
+        off_t file_size,
+        bool file_send,
+        struct server_config_data* server_info
+    )
+{
+    if(filename==NULL && file_send){ force_500(); return; }
+
+    int file_fd = (file_send ? open_response_file(filename): -1);
+
+    send_response_header(rd_data);
+
+    // Check if CGI
+    if( 
+        rq_data!=NULL 
+        && rq_data->PATH_DATA->file_extension!=NULL 
+        && strcmp(rq_data->PATH_DATA->file_extension,"php")==0 
+        && file_send
+    ){
+        log_debug("Recognized as CGI script");
+        flush_data_stream();
+
+        prepare_cgi_env(rq_data,server_info);
+
+        spawn_cgi_process(filename,file_fd,DATA_SOCKET);
+
+        fputs("\r\n",DATA_STREAM);
+        flush_data_stream();
+
+        close(file_fd);
+        return;
+    }else{
+        fputs("\r\n",DATA_STREAM);
+        flush_data_stream();
+    }
+
+    if(!file_send) return;
+
+    send_response_body(file_fd,file_size);
+    close(file_fd);    
 }
 
 // This function should force a 500 response to the server in case of 
@@ -164,11 +179,39 @@ void force_500(){
     struct response_data* rd_data;
     log_critical("Forced 500 error, quitting application");
     rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-    send_data(NULL,NULL,*rd_data,0,false, NULL);
+    send_response_data(NULL,NULL,*rd_data,0,false, NULL);
     // free_response_data(rd_data);
     fclose(DATA_STREAM);
     exit(-1);
 }   
+
+
+// Reads header's fields from the stream and add them to the request
+bool parse_request_header_fields(
+    struct request_data** rt
+){
+    char* line_buffer;
+    char* saveptr;
+    size_t line_size = 0;
+    ssize_t read_val;
+
+    for(;;){
+        read_val = getline(&line_buffer,&line_size,DATA_STREAM);
+        if(read_val==-1){ free(line_buffer); free(*rt); return false; }
+        if(strcmp(line_buffer,"\r\n")==0) break;
+
+        // TODO make this thread-safe
+        char* NAME = strtok_r(line_buffer,":",&saveptr);
+        char* VALUE = strtok_r(NULL,"\r\n",&saveptr);
+        
+        header_add_field_req(NAME,VALUE+1,(*rt));
+
+        free(line_buffer);
+        line_size = 0;
+    }
+    free(line_buffer);
+    return true;
+}
 
 // This function parses the incoming request, returns a response code and the request data into rt
 bool parse_request(
@@ -212,23 +255,8 @@ bool parse_request(
 
     free(line_buffer);
 
-    for(;;){
-        read_val = getline(&line_buffer,&line_size,DATA_STREAM);
-        if(read_val==-1){ free(line_buffer); free(*rt); return false; }
-        if(strcmp(line_buffer,"\r\n")==0) break;
-
-        // TODO make this thread-safe
-        char* NAME = strtok_r(line_buffer,":",&saveptr);
-        char* VALUE = strtok_r(NULL,"\r\n",&saveptr);
-        
-        header_add_field_req(NAME,VALUE+1,(*rt));
-
-        free(line_buffer);
-        line_size = 0;
-    }
-    free(line_buffer);
-
-    return true;
+    // This is the last action in the function, if it fails, the function should fail
+    return parse_request_header_fields(rt);
 }
 
 void create_response
@@ -312,6 +340,7 @@ void create_response
             *file_send = false;
     }
 
+    // TODO do better with macros
 	switch(ret_code){
 		case OK_200:
 			*rd_data = init_response("200","OK",server_info->HTTP_VERSION);
@@ -383,7 +412,7 @@ void send_response(struct request_data* rq_data,struct server_config_data* serve
     log_info("Sending response");
 	log_response(*rd_data);
 
-    send_data(rq_data,rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file,server_info);
+    send_response_data(rq_data,rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file,server_info);
 
     free_response_data(rd_data);
 }
