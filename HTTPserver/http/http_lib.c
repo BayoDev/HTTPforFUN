@@ -67,7 +67,7 @@ void send_data
         struct server_config_data* server_info
     )
 {
-    if(filename==NULL){ force_500(); return; }
+    if(filename==NULL && file_send){ force_500(); return; }
 
     int file_fd;
     if(file_send){
@@ -101,8 +101,6 @@ void send_data
         && strcmp(rq_data->PATH_DATA->file_extension,"php")==0 
         && file_send
     ){
-        log_debug("RECOGNIZED");
-        // fputs("\r\n",DATA_STREAM);
         fseek(DATA_STREAM,0L,SEEK_CUR);                         // sync 
 
         // Prepare CGI environment
@@ -145,8 +143,9 @@ void send_data
 // bad failure
 void force_500(){
     struct response_data* rd_data;
+    log_critical("Forced 500 error, quitting application");
     rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-    // send_data(NULL,NULL,*rd_data,0,false, NULL);
+    send_data(NULL,NULL,*rd_data,0,false, NULL);
     // free_response_data(rd_data);
     fclose(DATA_STREAM);
     exit(-1);
@@ -277,8 +276,6 @@ void create_response
                     *file_send = false;
                     ret_code = NOT_MOD_304;
                 }
-
-                printf(" %ld %ld",last_modified,requested_time_t);
             }
 
             break;
@@ -361,8 +358,8 @@ void send_response(struct request_data* rq_data,struct server_config_data* serve
     off_t file_size;
     bool send_file;
 	create_response(&rd_data,rq_data,&file_size,&send_file,server_info);
-    log_debug("Sending response");
-	print_response(*rd_data);
+    log_info("Sending response");
+	log_response(*rd_data);
 
     send_data(rq_data,rq_data->PATH_DATA->full_path,*rd_data,file_size,send_file,server_info);
 
@@ -383,7 +380,7 @@ void* handle_request(void* socket,struct server_config_data* server_info){
     bool success = parse_request(&data,server_info);
 
     #ifdef DEBUG
-    print_request(*data);
+    log_request(*data);
     #endif
 
     if(!success){

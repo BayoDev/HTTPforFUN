@@ -165,31 +165,34 @@ struct path_request_data* init_path_data(char* request_path,struct server_config
     return new;
 }
 
-void print_request(struct request_data rq){
-    printf("%s %s\n",rq.METHOD,rq.VERSION);
-    print_path_data(rq.PATH_DATA);
+void log_request(struct request_data rq){
+    log_debug("REQUEST DATA:");
+    log_debug("\t%s %s",rq.METHOD,rq.VERSION);
+    log_path_data(rq.PATH_DATA);
     struct header_field* aux = rq.other_fields;
     while(aux!=NULL){
-        printf("%s: %s\n",aux->NAME,aux->VALUE);
+        log_debug("\t%s: %s",aux->NAME,aux->VALUE);
         aux=aux->next_field;
     }
 }
 
-void print_path_data(struct path_request_data* pr_data){
-    printf("\tFULL PATH: %s\n",pr_data->full_path);
-    printf("\tREAL FULL PATH: %s\n",pr_data->real_full_path);
-    printf("\tREQUESTED PATH: %s\n",pr_data->requested_path);
-    printf("\tFILENAME: %s\n",pr_data->filename);
-    printf("\tPARAMETERS: %s\n",pr_data->parameters);
-    printf("\tFILE EXTENSION: %s\n",pr_data->file_extension);
+void log_path_data(struct path_request_data* pr_data){
+    log_debug("\tPATH DATA:");
+    log_debug("\t\tFULL PATH: %s",pr_data->full_path);
+    log_debug("\t\tREAL FULL PATH: %s",pr_data->real_full_path);
+    log_debug("\t\tREQUESTED PATH: %s",pr_data->requested_path);
+    log_debug("\t\tFILENAME: %s",pr_data->filename);
+    log_debug("\t\tPARAMETERS: %s",pr_data->parameters);
+    log_debug("\t\tFILE EXTENSION: %s",pr_data->file_extension);
     // printf("\tLOCAL PATH: %s\n",pr_data->local_path);
 }
 
-void print_response(struct response_data rd){
-    printf("%s %s %s\n",rd.VERSION,rd.CODE,rd.DESC);
+void log_response(struct response_data rd){
+    log_debug("RESPONSE DATA:");
+    log_debug("\t%s %s %s",rd.VERSION,rd.CODE,rd.DESC);
     struct header_field* aux = rd.other_fields;
     while(aux!=NULL){
-        printf("%s: %s\n",aux->NAME,aux->VALUE);
+        log_debug("\t\t%s: %s",aux->NAME,aux->VALUE);
         aux=aux->next_field;
     }
 }

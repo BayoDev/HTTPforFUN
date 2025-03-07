@@ -33,7 +33,7 @@ int init_log(){
 int setup_tcp_connection(){
     struct addrinfo hints;
     struct addrinfo *result;
-    int ret_code,tcp_socket;
+    int ret_code, tcp_socket, optval = 1;
 
     memset(&hints,0,sizeof(hints));
     hints.ai_family = AF_INET;
@@ -51,6 +51,11 @@ int setup_tcp_connection(){
     // Create TCP socket
     tcp_socket = socket(result->ai_family,result->ai_socktype,result->ai_protocol);
     if(tcp_socket==-1) fail_errno("Unable to open the socket");
+
+    // Ignore TIME_WAIT state
+    if(setsockopt(tcp_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1) {
+        fail_errno("Unable to set socket options");
+    }
 
     // Bind socket to address
     ret_code = bind(tcp_socket,result->ai_addr,result->ai_addrlen);

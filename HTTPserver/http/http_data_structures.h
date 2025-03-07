@@ -78,13 +78,13 @@ struct server_config_data* init_server_config(char* ROOT_FOLDER,char* PORT,char*
 // Request operations
 struct request_data* init_request(char* METHOD, struct path_request_data* PATH_DATA,char* VERSION);
 void free_request_data(struct request_data* st);
-void print_request(struct request_data rq);
+void log_request(struct request_data rq);
 
 // Response operations
 struct response_data* init_response(char* CODE,char* DESC,char* VERSION);
 void update_response(char* CODE,char* DESC,char* VERSION,struct response_data* rd_data);
 void free_response_data(struct response_data* st);
-void print_response(struct response_data rd);
+void log_response(struct response_data rd);
 
 // Header operations
 void header_add_field_req(char* NAME,char* VALUE,struct request_data* st);
@@ -93,7 +93,7 @@ void free_header_field(struct header_field* hd);
 
 // Path request operations
 struct path_request_data* init_path_data(char* request_path,struct server_config_data* server_info);
-void print_path_data(struct path_request_data* pr_data);
+void log_path_data(struct path_request_data* pr_data);
 void free_path_data(struct path_request_data* pr_data);
 
 // Helpers
