@@ -1,8 +1,11 @@
 #include "http_lib.h"
 #include <errno.h>
+#include <pthread.h>
 
 __thread FILE* DATA_STREAM;
 __thread int DATA_SOCKET; 
+
+pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //=====================
 //      AUXILIARY
@@ -84,11 +87,12 @@ void force_500();
 // Opens the file that needs to be sent and returns file descriptor
 int open_response_file(char* filename){
     int file_fd = open(filename,O_RDONLY,NULL);
-    if(file_fd==-1){
-        log_debug("Something went wrong with open while sending response");
+    if(file_fd<0){
+        log_error("Something went wrong with open while sending response");
         force_500();
         return -1;      // unreachable
     }
+    log_info("Opened file descriptor: %d for file: %s", file_fd, filename);
     return file_fd;
 }
 
@@ -116,12 +120,15 @@ void send_response_body(int file_fd,off_t file_size){
     // Transmit file data
     off_t offset = 0;
     while(file_size!=0){
+        // ERROR THE PROBLEM IS THAT YOU GET HERE AND THE FILE_FD is not open anymore
         int sent_data = sendfile(DATA_SOCKET,file_fd,&offset,file_size);
         if(sent_data==-1){
             perror("Something went wrong while transmitting file");
-            close(file_fd);
+            log_error("Something went wrong while transmitting file {DATA_SOCKET: %d, FILE_FD: %d}",DATA_SOCKET,file_fd);
+            // close(file_fd);
             return;
         }
+        log_info("Transmitting file {DATA_SOCKET: %d, FILE_FD: %d}",DATA_SOCKET,file_fd);
         file_size-=sent_data;
     }
 }
@@ -139,9 +146,20 @@ void send_response_data
 {
     if(filename==NULL && file_send){ force_500(); return; }
 
+    pthread_mutex_lock(&send_mutex);
+
     int file_fd = (file_send ? open_response_file(filename): -1);
 
     send_response_header(rd_data);
+
+    int fd_is_valid(int fd)
+    {
+        return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+    }
+
+    // ERROR File descriptor is already bad here
+    if(!fd_is_valid(file_fd)) 
+        log_error("FD %d is bad",file_fd);
 
     // Check if CGI
     if( 
@@ -161,16 +179,26 @@ void send_response_data
         flush_data_stream();
 
         close(file_fd);
+        log_info("Closed file descriptor: %d after CGI processing", file_fd);
+        pthread_mutex_unlock(&send_mutex);
         return;
     }else{
         fputs("\r\n",DATA_STREAM);
         flush_data_stream();
     }
 
-    if(!file_send) return;
+    if(!fd_is_valid(file_fd)) 
+        log_error("FD %d is bad 2",file_fd);
+
+    if(!file_send){ 
+        pthread_mutex_unlock(&send_mutex);
+        return;
+    }
 
     send_response_body(file_fd,file_size);
-    close(file_fd);    
+    close(file_fd); 
+    log_info("Closed file descriptor: %d after sending response body", file_fd);
+    pthread_mutex_unlock(&send_mutex);   
 }
 
 // This function should force a 500 response to the server in case of 
@@ -182,6 +210,9 @@ void force_500(){
     send_response_data(NULL,NULL,*rd_data,0,false, NULL);
     // free_response_data(rd_data);
     fclose(DATA_STREAM);
+
+    // I dont know if it's needed
+    pthread_mutex_unlock(&send_mutex);
     exit(-1);
 }   
 
@@ -220,7 +251,7 @@ bool parse_request(
 ){
     if(DATA_STREAM==NULL) return false;
 
-    *rt = NULL;
+    // *rt = NULL;
     char* line_buffer;
     ssize_t read_val;
     size_t line_size = 0;
@@ -391,12 +422,13 @@ void create_response
 
 	// Get current date
 	time_t* temp = malloc(sizeof(time_t));
-	struct tm* curr_time;
+	struct tm* curr_time = malloc(sizeof(struct tm));
 	time(temp);
-	curr_time = gmtime(temp);
+	gmtime_r(temp,curr_time);
 
 	strftime(aux,BUFF_SIZE,"%a, %d %b %Y %H:%M:%S %Z",curr_time);
 	free(temp);
+    free(curr_time);
 	header_add_field_resp("Date",aux,*rd_data);
 
 	// TODO Last modified
@@ -421,24 +453,36 @@ void send_response(struct request_data* rq_data,struct server_config_data* serve
 //      INTERFACE
 //=====================
 
-void* handle_request(void* socket,struct server_config_data* server_info){
-    DATA_SOCKET = *((int*) socket);
+void handle_request(void* args){
+
+    struct arg_struct parsed = *((struct arg_struct*) args);    
+    int socket = parsed.socket_fd;
+    struct server_config_data* server_info = parsed.server_info;
+
+    DATA_SOCKET = socket;
     DATA_STREAM = fdopen(DATA_SOCKET,"r+");
-    if(DATA_STREAM==NULL) return NULL;
+    if(DATA_STREAM==NULL) return;
     
     struct request_data* data;
     bool success = parse_request(&data,server_info);
 
+    if(!success){
+        log_error("Request parsing failed");
+        goto closing_state;
+    }
     log_request(*data);
 
     if(!success){
         force_500();
-        return NULL;
+        return;
     }
 
     send_response(data,server_info);
+    
+    closing_state:
     free_request_data(data);
-
+    log_debug("Closing file descriptor: %d",DATA_SOCKET);
     fclose(DATA_STREAM);
-    return NULL;
+    // close(socket);
+    return;
 }

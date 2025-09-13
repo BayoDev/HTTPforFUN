@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 #include <time.h>
 
@@ -25,7 +26,12 @@
 #include "../cgi/cgi_interface.h"
 #include "../c_log/c_log.h"
 
-void* handle_request(void* socket_fd,struct server_config_data* server_info);
+struct arg_struct {
+    int socket_fd;
+    struct server_config_data* server_info;
+};
+
+void handle_request(void* args);
 char *adapt_filename(char* file,struct server_config_data* server_info);
 
 #endif
