@@ -8,7 +8,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <sys/time.h>
 
+#define _GNU_SOURCE
 #include <pthread.h>
 
 // Local imports
@@ -16,6 +18,7 @@
 #include "http/http_config.h"
 #include "http/http_lib.h"
 #include "http/http_data_structures.h"
+#include "multithreading/multithreading.h"
 
 void fail_errno(char* data){
     perror(data);
@@ -26,7 +29,7 @@ int init_log(){
     int fd = open("log.txt",O_WRONLY|O_CREAT|O_TRUNC,0777);
     if(fd==-1) return -1;
 
-    init_logging(fd,true,LOG_DEBUG);
+    // init_logging(fd,true,LOG_INFO,false);
     return 0;
 }
 
@@ -71,6 +74,34 @@ int setup_tcp_connection(){
     return tcp_socket;
 }
 
+
+void usage_monitor(){
+    printf("\n");
+    while(true){
+        int avail = num_available_threads();
+        unsigned int perc = (THREAD_POOL_SIZE-avail)/(((float)THREAD_POOL_SIZE)/100);
+        printf("\rTHREAD USAGE [");
+        int step = 1;
+        for(int i=0;i<perc/step;i++){
+            printf("=");
+        }
+        for(int i=0;i<(100-perc)/step;i++){
+            printf(" ");
+        }
+        printf("]  %3d%%  %5d/%5d",perc,THREAD_POOL_SIZE-avail,THREAD_POOL_SIZE); 
+        fflush(stdout);
+        sleep(1);
+    }
+}
+
+void init_monitor(){
+    pthread_t thr;
+    if(pthread_create(&thr,NULL,(void*)(void *) usage_monitor,NULL)!=0){
+        log_error("Error occured while initializing monitor");
+    }
+}
+
+
 void serve_loop(int tcp_socket){
 
     // Create server info struct
@@ -84,18 +115,35 @@ void serve_loop(int tcp_socket){
     // Start accepting connections
     // TODO: check if NULL is right as third parameter
     for(;;){
+
         // Accept socket connection
-        int conn_socket = accept(tcp_socket,NULL,NULL);
-        if(conn_socket==-1) break;
+        int volatile conn_socket = accept(tcp_socket,NULL,NULL);
+        if(conn_socket==-1) continue;
         log_debug("New connection established");
 
-        // TODO this shouldnt work since the conn_socket could be changed
-        // pthread_t thread_instance;
-        // if(pthread_create(&thread_instance,NULL,handle_request,&conn_socket)!=0) return;
         
-        handle_request(&conn_socket, server_info);
+        pthread_t* thread_instance;
+        int thr_resp;
+        do{
+            join_done_threads();
+            thr_resp = request_thread(&thread_instance);
+        }while(thr_resp==-1);
 
-        close(conn_socket);
+        struct arg_struct* args = malloc(sizeof(struct arg_struct));
+        args->socket_fd = conn_socket;
+        args->server_info = server_info;
+        
+        if(pthread_create(thread_instance,NULL,(void*)(void *) handle_request,(void*) args)!=0){
+            free(args);
+            close(conn_socket);
+        }
+
+        // Uncomment to test without concurrency
+        // pthread_joing(thread_instance,NULL);
+
+        // Very unsafe, dont have control over numbers of threads
+        // pthread_detach(thread_instance);
+
     }
     fail_errno("Something went wrong in accept");
 }
@@ -109,6 +157,19 @@ int main(){
     int tcp_socket = setup_tcp_connection();
     log_info("Page root folder at: %s",ROOT_FOLDER_PARAM);
     log_info("Socket established, now accepting connections at 127.0.0.1:%s ...",PORT_PARAM);
+
+    init_monitor();
+
+    // Set socket timeout to 30 seconds
+    struct timeval timeout;
+    timeout.tv_sec = 30;
+    timeout.tv_usec = 0;
+    if (setsockopt(tcp_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Failed to set receive timeout");
+    }
+    if (setsockopt(tcp_socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Failed to set send timeout");
+    }
 
     serve_loop(tcp_socket);
 

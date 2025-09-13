@@ -1,4 +1,4 @@
-SOURCE := main.c http/http_lib.c http/http_data_structures.c cgi/cgi_interface.c c_log/c_log.c
+SOURCE := main.c http/http_lib.c http/http_data_structures.c cgi/cgi_interface.c c_log/c_log.c  multithreading/multithreading.c
 CC_FLAGS := 
 CC_DEV_FLAGS := -Wall -fsanitize=address -ggdb -pthread 
 TARGET := out/server
@@ -12,7 +12,7 @@ clean:
 	rm -r -f out/
 
 dev: create_dir
-	gcc $(CC_DEV_FLAGS) -o $(TARGET) $(SOURCE)
+	gcc -std=c2x $(CC_DEV_FLAGS) -o $(TARGET) $(SOURCE)
 
 create_dir:
 	mkdir -p out
