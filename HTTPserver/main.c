@@ -29,7 +29,7 @@ int init_log(){
     int fd = open("log.txt",O_WRONLY|O_CREAT|O_TRUNC,0777);
     if(fd==-1) return -1;
 
-    // init_logging(fd,true,LOG_INFO,false);
+    init_logging(-1,true,LOG_INFO,false);
     return 0;
 }
 
@@ -158,7 +158,7 @@ int main(){
     log_info("Page root folder at: %s",ROOT_FOLDER_PARAM);
     log_info("Socket established, now accepting connections at 127.0.0.1:%s ...",PORT_PARAM);
 
-    init_monitor();
+    // init_monitor();
 
     // Set socket timeout to 30 seconds
     struct timeval timeout;

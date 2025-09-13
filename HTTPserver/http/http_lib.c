@@ -30,7 +30,7 @@ void handle_error_code(
 
 // Basic sanity check and uniforming for file names
 char *adapt_filename(char* file,struct server_config_data* server_info){
-    if(strlen(file)==0){file=malloc(sizeof(char)*2);file="/";}
+    if(strlen(file)==0){file="/";}
 
     // Sanitazation
     char* aux = file;
@@ -43,6 +43,10 @@ char *adapt_filename(char* file,struct server_config_data* server_info){
 
     // TODO add error control to malloc
     char *full_filename = malloc(sizeof(char)*(strlen(server_info->ROOT_FOLDER)+strlen(file)+strlen("index.html")+1));
+    if(full_filename == NULL) {
+        log_error("Memory allocation failed in adapt_filename");
+        return NULL;
+    }
     strcpy(full_filename,server_info->ROOT_FOLDER);
     strcat(full_filename,file);
     // if(file[strlen(file)-1]=='/') strcat(full_filename,"index.html");
@@ -89,6 +93,7 @@ int open_response_file(char* filename){
     int file_fd = open(filename,O_RDONLY,NULL);
     if(file_fd<0){
         log_error("Something went wrong with open while sending response");
+        pthread_mutex_unlock(&send_mutex);
         force_500();
         return -1;      // unreachable
     }
@@ -133,6 +138,13 @@ void send_response_body(int file_fd,off_t file_size){
     }
 }
 
+// Helper function to check if file descriptor is valid
+static int fd_is_valid(int fd)
+{
+    if(fd < 0) return 0;
+    return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+}
+
 // Send response to a request
 void send_response_data
     (
@@ -152,14 +164,12 @@ void send_response_data
 
     send_response_header(rd_data);
 
-    int fd_is_valid(int fd)
-    {
-        return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
-    }
-
     // ERROR File descriptor is already bad here
-    if(!fd_is_valid(file_fd)) 
+    if(file_send && !fd_is_valid(file_fd)) {
         log_error("FD %d is bad",file_fd);
+        pthread_mutex_unlock(&send_mutex);
+        return;
+    }
 
     // Check if CGI
     if( 
@@ -178,8 +188,10 @@ void send_response_data
         fputs("\r\n",DATA_STREAM);
         flush_data_stream();
 
-        close(file_fd);
-        log_info("Closed file descriptor: %d after CGI processing", file_fd);
+        if(file_fd >= 0) {
+            close(file_fd);
+            log_info("Closed file descriptor: %d after CGI processing", file_fd);
+        }
         pthread_mutex_unlock(&send_mutex);
         return;
     }else{
@@ -187,8 +199,11 @@ void send_response_data
         flush_data_stream();
     }
 
-    if(!fd_is_valid(file_fd)) 
+    if(file_send && !fd_is_valid(file_fd)) {
         log_error("FD %d is bad 2",file_fd);
+        pthread_mutex_unlock(&send_mutex);
+        return;
+    }
 
     if(!file_send){ 
         pthread_mutex_unlock(&send_mutex);
@@ -196,8 +211,10 @@ void send_response_data
     }
 
     send_response_body(file_fd,file_size);
-    close(file_fd); 
-    log_info("Closed file descriptor: %d after sending response body", file_fd);
+    if(file_fd >= 0) {
+        close(file_fd); 
+        log_info("Closed file descriptor: %d after sending response body", file_fd);
+    }
     pthread_mutex_unlock(&send_mutex);   
 }
 
@@ -207,12 +224,14 @@ void force_500(){
     struct response_data* rd_data;
     log_critical("Forced 500 error, quitting application");
     rd_data = init_response("500","Internal Server Error","HTTP/1.0");
-    send_response_data(NULL,NULL,*rd_data,0,false, NULL);
-    // free_response_data(rd_data);
-    fclose(DATA_STREAM);
-
-    // I dont know if it's needed
-    pthread_mutex_unlock(&send_mutex);
+    if(rd_data != NULL) {
+        send_response_data(NULL,NULL,*rd_data,0,false, NULL);
+        free_response_data(rd_data);
+    }
+    if(DATA_STREAM != NULL) {
+        fclose(DATA_STREAM);
+    }
+    // pthread_mutex_unlock(&send_mutex);
     exit(-1);
 }   
 
@@ -228,7 +247,7 @@ bool parse_request_header_fields(
 
     for(;;){
         read_val = getline(&line_buffer,&line_size,DATA_STREAM);
-        if(read_val==-1){ free(line_buffer); free(*rt); return false; }
+        if(read_val==-1){ free(line_buffer); return false; }
         if(strcmp(line_buffer,"\r\n")==0) break;
 
         // TODO make this thread-safe
@@ -259,9 +278,13 @@ bool parse_request(
     // Read the first header line
     {
         read_val = getline(&line_buffer,&line_size,DATA_STREAM);
-        if(read_val==-1){ 
+        if(read_val==-1){
             free(line_buffer);
-            perror("Something went wrong while receiving a request header");
+            if (ferror(DATA_STREAM)) {
+                log_error("Error reading request header: %s", strerror(errno));
+            } else {
+                log_debug("Client closed connection");
+            }
             return false;
         }
         log_debug("Received request: %s",line_buffer);
@@ -421,14 +444,11 @@ void create_response
 	// header_add_field_resp("Content-Length",aux,*rd_data);
 
 	// Get current date
-	time_t* temp = malloc(sizeof(time_t));
-	struct tm* curr_time = malloc(sizeof(struct tm));
-	time(temp);
-	gmtime_r(temp,curr_time);
+	time_t temp = time(NULL);
+	struct tm curr_time;
+	gmtime_r(&temp, &curr_time);
 
-	strftime(aux,BUFF_SIZE,"%a, %d %b %Y %H:%M:%S %Z",curr_time);
-	free(temp);
-    free(curr_time);
+	strftime(aux,BUFF_SIZE,"%a, %d %b %Y %H:%M:%S %Z",&curr_time);
 	header_add_field_resp("Date",aux,*rd_data);
 
 	// TODO Last modified
@@ -461,9 +481,13 @@ void handle_request(void* args){
 
     DATA_SOCKET = socket;
     DATA_STREAM = fdopen(DATA_SOCKET,"r+");
-    if(DATA_STREAM==NULL) return;
+    if(DATA_STREAM==NULL) {
+        log_error("Failed to open data stream for socket %d", socket);
+        free(args);
+        return;
+    }
     
-    struct request_data* data;
+    struct request_data* data = NULL;
     bool success = parse_request(&data,server_info);
 
     if(!success){
@@ -472,17 +496,17 @@ void handle_request(void* args){
     }
     log_request(*data);
 
-    if(!success){
-        force_500();
-        return;
-    }
-
     send_response(data,server_info);
     
     closing_state:
-    free_request_data(data);
+    if(data != NULL) {
+        free_request_data(data);
+    }
     log_debug("Closing file descriptor: %d",DATA_SOCKET);
-    fclose(DATA_STREAM);
+    if(DATA_STREAM != NULL) {
+        fclose(DATA_STREAM);
+    }
+    free(args);
     // close(socket);
     return;
 }

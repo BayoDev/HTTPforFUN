@@ -138,7 +138,6 @@ struct path_request_data* init_path_data(char* request_path,struct server_config
 
     new->parameters = strchr(new->requested_path,'?');
     if( new->parameters == NULL) {
-        new->parameters = malloc(sizeof(char));
         new->parameters = "";
     }
     else{

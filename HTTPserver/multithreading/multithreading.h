@@ -6,7 +6,7 @@
 #define _GNU_SOURCE
 #include <pthread.h>
 
-#define THREAD_POOL_SIZE 100
+#define THREAD_POOL_SIZE 10
 
 bool thread_is_available();
 void join_done_threads();
